@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Notes App</title>
+<style>
+  body { font-family: Arial, sans-serif; background: #f3f0ff; margin: 0; color: #333; }
+  header { background: #6c5ce7; color: #fff; padding: 14px 24px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+  header h1 { margin: 0; font-size: 22px; }
+  .badge { padding: 4px 10px; border-radius: 12px; font-size: 13px; margin-left: 6px; color: #fff; }
+  .on { background: #00b894; }
+  .off { background: #d63031; }
+  .layout { display: flex; gap: 16px; padding: 16px; flex-wrap: wrap; }
+  .left { flex: 1 1 300px; max-width: 380px; }
+  .right { flex: 3 1 420px; }
+  .card { background: #fff; border-radius: 10px; padding: 14px; margin-bottom: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+  .card h3 { margin: 0 0 10px 0; color: #6c5ce7; }
+  input, select, textarea { width: 100%; box-sizing: border-box; padding: 8px; margin-bottom: 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
+  button { padding: 8px 14px; border: none; border-radius: 6px; color: #fff; cursor: pointer; font-size: 14px; margin-right: 4px; margin-bottom: 4px; }
+  .get { background: #0984e3; }
+  .post { background: #00b894; }
+  .put { background: #fdcb6e; color: #333; }
+  .delete { background: #d63031; }
+  .grey { background: #636e72; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .row > * { flex: 1 1 110px; }
+  .note { border-left: 6px solid #6c5ce7; background: #faf9ff; padding: 10px; margin-bottom: 10px; border-radius: 6px; }
+  .note.work { border-color: #e17055; }
+  .note.personal { border-color: #00b894; }
+  .note.study { border-color: #0984e3; }
+  .note h4 { margin: 0 0 4px 0; }
+  .small { font-size: 12px; color: #636e72; }
+  .tag { display: inline-block; background: #dfe6e9; border-radius: 10px; padding: 2px 8px; font-size: 12px; }
+  #message { padding: 10px; border-radius: 6px; margin-bottom: 12px; display: none; }
+  .good { background: #d5f5e3; color: #1e6b3a; }
+  .bad { background: #fadbd8; color: #922b21; }
+  #log { background: #2d3436; color: #dfe6e9; padding: 10px; border-radius: 6px; font-size: 13px; white-space: pre-wrap; max-height: 180px; overflow: auto; margin: 0; }
+  .source { float: right; font-size: 13px; background: #ffeaa7; padding: 3px 10px; border-radius: 10px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>My Notes App</h1>
+  <div>
+    <span id="mongoBadge" class="badge off">MongoDB: ...</span>
+    <span id="redisBadge" class="badge off">Redis: ...</span>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT SIDE: login + add/edit note -->
+  <div class="left">
+
+    <div class="card">
+      <h3>1. Login</h3>
+      <div id="loggedOut">
+        <input id="username" placeholder="Username (min 3 letters)">
+        <input id="password" type="password" placeholder="Password (min 4)">
+        <button class="post" onclick="register()">Register</button>
+        <button class="get" onclick="login()">Login</button>
+        <p class="small">Admin login: admin / admin123 (only admin can delete)</p>
+      </div>
+      <div id="loggedIn" style="display:none">
+        <p>Hello <b id="who"></b> (<span id="role"></span>)</p>
+        <button class="grey" onclick="logout()">Logout</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 id="formTitle">2. Add a note</h3>
+      <input id="title" placeholder="Title (3 to 50 letters)">
+      <textarea id="content" rows="3" placeholder="Write your note here"></textarea>
+      <select id="category">
+        <option value="study">study</option>
+        <option value="work">work</option>
+        <option value="personal">personal</option>
+      </select>
+      <button id="saveBtn" class="post" onclick="saveNote()">Add Note (POST)</button>
+      <button id="cancelBtn" class="grey" onclick="cancelEdit()" style="display:none">Cancel</button>
+    </div>
+
+  </div>
+
+  <!-- RIGHT SIDE: search, list, pagination, log -->
+  <div class="right">
+
+    <div id="message"></div>
+
+    <div class="card">
+      <h3>3. Find notes</h3>
+      <div class="row">
+        <input id="search" placeholder="Search in title">
+        <select id="filterCategory">
+          <option value="">All categories</option>
+          <option value="study">study</option>
+          <option value="work">work</option>
+          <option value="personal">personal</option>
+        </select>
+        <select id="sortBy">
+          <option value="created_at">Sort by date</option>
+          <option value="title">Sort by title</option>
+        </select>
+        <select id="order">
+          <option value="desc">Newest / Z-A</option>
+          <option value="asc">Oldest / A-Z</option>
+        </select>
+        <select id="limit">
+          <option value="3">3 per page</option>
+          <option value="5" selected>5 per page</option>
+          <option value="10">10 per page</option>
+        </select>
+      </div>
+      <button class="get" onclick="loadNotes(1)">Show Notes (GET)</button>
+    </div>
+
+    <div class="card">
+      <span id="source" class="source"></span>
+      <h3>Your notes <span id="total" class="small"></span></h3>
+      <div id="notesList"><p class="small">Press "Show Notes" to see notes.</p></div>
+      <button class="grey" onclick="changePage(-1)">Previous</button>
+      <span id="pageInfo">Page 1 of 1</span>
+      <button class="grey" onclick="changePage(1)">Next</button>
+    </div>
+
+    <div class="card">
+      <h3>What just happened? (request log)</h3>
+      <pre id="log">Nothing yet. Do something on the screen!</pre>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  let token = localStorage.getItem("token") || "";
+  let currentUser = localStorage.getItem("username") || "";
+  let currentRole = localStorage.getItem("role") || "";
+  let currentPage = 1;
+  let totalPages = 1;
+  let editingId = null;
+
+  // ---------- one helper that sends every request ----------
+  async function api(method, url, body) {
+    const headers = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = token;
+
+    const res = await fetch(url, {
+      method: method,
+      headers: headers,
+      body: body ? JSON.stringify(body) : undefined
+    });
+    let data = {};
+    try { data = await res.json(); } catch (e) {}
+
+    document.getElementById("log").textContent =
+      method + " " + url + "\nStatus: " + res.status + "\n\n" + JSON.stringify(data, null, 2);
+    return { ok: res.ok, status: res.status, data: data };
+  }
+
+  function errorText(data) {
+    // Pydantic errors come as a list, other errors as plain text
+    if (Array.isArray(data.detail)) {
+      return data.detail.map(d => d.loc[d.loc.length - 1] + ": " + d.msg).join(" | ");
+    }
+    return data.detail || "Something went wrong";
+  }
+
+  function show(text, good) {
+    const box = document.getElementById("message");
+    box.textContent = text;
+    box.className = good ? "good" : "bad";
+    box.style.display = "block";
+  }
+
+  function esc(text) {
+    const d = document.createElement("div");
+    d.textContent = text;
+    return d.innerHTML;
+  }
+
+  // ---------- status badges ----------
+  async function loadStatus() {
+    const r = await fetch("/status");
+    const s = await r.json();
+    const m = document.getElementById("mongoBadge");
+    const rd = document.getElementById("redisBadge");
+    m.textContent = "MongoDB: " + (s.mongodb ? "ON" : "OFF");
+    m.className = "badge " + (s.mongodb ? "on" : "off");
+    rd.textContent = "Redis: " + (s.redis ? "ON" : "OFF (app still works)");
+    rd.className = "badge " + (s.redis ? "on" : "off");
+  }
+
+  // ---------- login ----------
+  function readLogin() {
+    return {
+      username: document.getElementById("username").value,
+      password: document.getElementById("password").value
+    };
+  }
+
+  async function register() {
+    const r = await api("POST", "/auth/register", readLogin());
+    show(r.ok ? r.data.message : errorText(r.data), r.ok);
+  }
+
+  async function login() {
+    const r = await api("POST", "/auth/login", readLogin());
+    if (!r.ok) return show(errorText(r.data), false);
+    token = r.data.token;
+    currentUser = r.data.username;
+    currentRole = r.data.role;
+    localStorage.setItem("token", token);
+    localStorage.setItem("username", currentUser);
+    localStorage.setItem("role", currentRole);
+    show("Login successful!", true);
+    updateLoginBox();
+    loadNotes(currentPage);
+  }
+
+  function logout() {
+    token = ""; currentUser = ""; currentRole = "";
+    localStorage.clear();
+    updateLoginBox();
+    loadNotes(currentPage);
+    show("Logged out", true);
+  }
+
+  function updateLoginBox() {
+    document.getElementById("loggedOut").style.display = token ? "none" : "block";
+    document.getElementById("loggedIn").style.display = token ? "block" : "none";
+    document.getElementById("who").textContent = currentUser;
+    document.getElementById("role").textContent = currentRole;
+  }
+
+  // ---------- notes: GET list ----------
+  async function loadNotes(page) {
+    currentPage = page;
+    const params = new URLSearchParams({
+      search: document.getElementById("search").value,
+      category: document.getElementById("filterCategory").value,
+      sort_by: document.getElementById("sortBy").value,
+      order: document.getElementById("order").value,
+      page: page,
+      limit: document.getElementById("limit").value
+    });
+    const r = await api("GET", "/notes?" + params.toString());
+    if (!r.ok) return show(errorText(r.data), false);
+
+    totalPages = r.data.total_pages;
+    document.getElementById("source").textContent = "Loaded from: " + r.data.source;
+    document.getElementById("total").textContent = "(" + r.data.total + " found)";
+    document.getElementById("pageInfo").textContent = "Page " + r.data.page + " of " + totalPages;
+
+    const list = document.getElementById("notesList");
+    if (r.data.notes.length === 0) {
+      list.innerHTML = '<p class="small">No notes found.</p>';
+      return;
+    }
+    list.innerHTML = "";
+    r.data.notes.forEach(function (n) {
+      const div = document.createElement("div");
+      div.className = "note " + n.category;
+      div.innerHTML =
+        "<h4>" + esc(n.title) + ' <span class="tag">' + esc(n.category) + "</span></h4>" +
+        "<div>" + esc(n.content) + "</div>" +
+        '<div class="small">by ' + esc(n.owner) + " | " + esc(n.created_at) + "</div>" +
+        '<button class="get" onclick="viewNote(\'' + n.id + '\')">View (GET)</button>' +
+        '<button class="put" onclick="startEdit(\'' + n.id + '\')">Edit (PUT)</button>' +
+        '<button class="delete" onclick="deleteNote(\'' + n.id + '\')">Delete (DELETE)</button>';
+      list.appendChild(div);
+    });
+  }
+
+  function changePage(step) {
+    const next = currentPage + step;
+    if (next >= 1 && next <= totalPages) loadNotes(next);
+  }
+
+  // ---------- notes: GET one ----------
+  async function viewNote(id) {
+    const r = await api("GET", "/notes/" + id);
+    show(r.ok ? "Note loaded - see the request log below" : errorText(r.data), r.ok);
+  }
+
+  // ---------- notes: POST (add) and PUT (edit) ----------
+  async function saveNote() {
+    const body = {
+      title: document.getElementById("title").value,
+      content: document.getElementById("content").value,
+      category: document.getElementById("category").value
+    };
+    const r = editingId
+      ? await api("PUT", "/notes/" + editingId, body)
+      : await api("POST", "/notes", body);
+
+    if (!r.ok) return show(errorText(r.data), false);
+    show(editingId ? "Note updated!" : "Note added!", true);
+    cancelEdit();
+    loadNotes(currentPage);
+  }
+
+  async function startEdit(id) {
+    const r = await api("GET", "/notes/" + id);
+    if (!r.ok) return show(errorText(r.data), false);
+    editingId = id;
+    document.getElementById("title").value = r.data.title;
+    document.getElementById("content").value = r.data.content;
+    document.getElementById("category").value = r.data.category;
+    document.getElementById("formTitle").textContent = "2. Edit note";
+    document.getElementById("saveBtn").textContent = "Save Changes (PUT)";
+    document.getElementById("saveBtn").className = "put";
+    document.getElementById("cancelBtn").style.display = "inline-block";
+    window.scrollTo(0, 0);
+  }
+
+  function cancelEdit() {
+    editingId = null;
+    document.getElementById("title").value = "";
+    document.getElementById("content").value = "";
+    document.getElementById("formTitle").textContent = "2. Add a note";
+    document.getElementById("saveBtn").textContent = "Add Note (POST)";
+    document.getElementById("saveBtn").className = "post";
+    document.getElementById("cancelBtn").style.display = "none";
+  }
+
+  // ---------- notes: DELETE ----------
+  async function deleteNote(id) {
+    if (!confirm("Delete this note?")) return;
+    const r = await api("DELETE", "/notes/" + id);
+    show(r.ok ? "Note deleted!" : errorText(r.data), r.ok);
+    if (r.ok) loadNotes(currentPage);
+  }
+
+  // ---------- run when page opens ----------
+  updateLoginBox();
+  loadStatus();
+  loadNotes(1);
+</script>
+</body>
+</html>
